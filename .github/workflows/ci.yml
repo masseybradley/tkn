@@ -17,6 +17,9 @@ jobs:
       - name: github packages login
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u "${{ github.actor }}" --password-stdin
 
+      - name: docker version
+        run: docker version
+
       - name: pull kind image
         run: docker pull docker.pkg.github.com/lazybit-ch/kind/kind:v0.7.0
 
