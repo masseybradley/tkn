@@ -24,7 +24,7 @@ jobs:
         run: docker run --rm -d --privileged -v ${PWD}/release.yaml:/release.yaml -v /github/home/.docker/config.json:/root/.docker/config.json --name tekton docker.pkg.github.com/lazybit-ch/kind/kind:v0.7.0
 
       - name: create tekton cluster
-        run: docker exec -t tekton kind create cluster --name tekton
+        run: docker exec -t tekton kind create cluster
 
       - name: download tekton-pipelines release
         run: docker exec -t tekton ash -c "curl -L https://github.com/tektoncd/pipeline/releases/download/v0.11.0-rc2/release.yaml | kubectl apply -f -"
