@@ -23,6 +23,9 @@ jobs:
       - name: run kind in dind container
         run: docker run --rm -d --privileged -v ${PWD}/release.yaml:/release.yaml -v /github/home/.docker/config.json:/root/.docker/config.json --name tekton docker.pkg.github.com/lazybit-ch/kind/kind:v0.7.0
 
+      - name: wait for dind startup
+        run: sleep 30
+
       - name: create tekton cluster
         run: docker exec -t tekton kind create cluster
 
