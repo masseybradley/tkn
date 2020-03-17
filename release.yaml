@@ -1,0 +1,164 @@
+apiVersion: tekton.dev/v1alpha1
+kind: Task
+metadata:
+  name: hadolint
+  namespace: tekton-pipelines
+spec:
+  inputs:
+    resources:
+    - name: source
+      type: git
+  steps:
+  - name: hadolint
+    image: hadolint/hadolint
+    command: ["/bin/ash"]
+    args:
+    - -c
+    - |
+        hadolint /workspace/source/Dockerfile
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: kaniko
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: dockerfile
+      type: string
+      description: The path to the Dockerfile to build
+      default: /workspace/source/Dockerfile
+    - name: context
+      type: string
+      description: The Kaniko build context
+      default: /workspace/source
+  resources:
+    inputs:
+      - name: source
+        type: git
+    outputs:
+      - name: image
+        type: image
+  steps:
+    - name: build-and-push
+      image: gcr.io/kaniko-project/executor:v0.17.1
+      command:
+        - /kaniko/executor
+      args:
+        - --dockerfile=$(params.dockerfile)
+        - --destination=$(resources.outputs.image.url)
+        - --context=$(params.context)
+        - --cache=false
+      env:
+        - name: DOCKER_CONFIG
+          value: /tekton/home/.docker
+      volumeMounts:
+        - mountPath: /tekton/home/.docker/
+          name: regcred
+          readOnly: true
+  volumes:
+    - name: regcred
+      secret:
+        secretName: regcred
+---
+apiVersion: tekton.dev/v1alpha1
+kind: PipelineResource
+metadata:
+  name: tkn-git
+  namespace: tekton-pipelines
+spec:
+  type: git
+  params:
+    - name: url
+      value: https://github.com/lazybit-ch/tkn.git
+    - name: revision
+      value: master
+---
+apiVersion: tekton.dev/v1alpha1
+kind: PipelineResource
+metadata:
+  name: tkn-image
+  namespace: tekton-pipelines
+spec:
+  type: image
+  params:
+    - name: url
+      value: docker.pkg.github.com/lazybit-ch/tkn/tkn:latest
+---
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: hadolint
+  namespace: tekton-pipelines
+spec:
+  taskRef:
+    name: hadolint
+  resources:
+    inputs:
+      - name: source
+        resourceRef:
+          name: tkn-git
+---
+apiVersion: tekton.dev/v1beta1
+kind: TaskRun
+metadata:
+  name: kaniko
+  namespace: tekton-pipelines
+spec:
+  taskRef:
+    name: kaniko
+  resources:
+    inputs:
+      - name: source
+        resourceRef:
+          name: tkn-git
+    outputs:
+      - name: image
+        resourceRef:
+          name: tkn-image
+---
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: tkn
+  namespace: tekton-pipelines
+spec:
+  resources:
+    - name: source
+      type: git
+    - name: image
+      type: image
+  tasks:
+    - name: lint
+      taskRef:
+        name: hadolint
+      resources:
+        inputs:
+          - name: source
+            resource: source
+    - name: build
+      taskRef:
+        name: kaniko
+      resources:
+        inputs:
+          - name: source
+            resource: source
+        outputs:
+          - name: image
+            resource: image
+---
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: tkn-run
+  namespace: tekton-pipelines
+spec:
+  pipelineRef:
+    name: tkn
+  resources:
+    - name: source
+      resourceRef:
+        name: tkn-git
+    - name: image
+      resourceRef:
+        name: tkn-image
