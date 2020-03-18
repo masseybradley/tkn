@@ -12,37 +12,32 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      # workaround for: https://github.com/kubernetes-sigs/kind/issues/1350
+      - name: install kind
+        run: curl -Lo kind https://github.com/kubernetes-sigs/kind/releases/download/v0.7.0/kind-$(uname)-amd64 && chmod 755 kind
+
+      - name: install kubectl
+        run: curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v1.17.0/bin/linux/amd64/kubectl && chmod 755 kubectl
+
       # workaround for not being able to initialize pull credentials before the 'initialize containers' step and running all commands in our container:
       # https://github.community/t5/GitHub-Actions/Is-it-possible-to-login-to-dockerhub-to-initialize-containers-in/td-p/31880
       - name: github packages login
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u "${{ github.actor }}" --password-stdin
 
-      - name: docker version
-        run: docker version
-
-      - name: pull kind image
-        run: docker pull docker.pkg.github.com/lazybit-ch/kind/kind:v0.7.0
-
-      - name: run kind in dind container
-        run: docker run --rm -d --privileged -v ${PWD}/release.yaml:/release.yaml -v /github/home/.docker/config.json:/root/.docker/config.json --name tekton docker.pkg.github.com/lazybit-ch/kind/kind:v0.7.0
-
-      - name: wait for dind startup
-        run: sleep 30
-
       - name: create tekton cluster
-        run: docker exec -t tekton kind create cluster
+        run: ./kind create cluster
 
       - name: download tekton-pipelines release
-        run: docker exec -t tekton ash -c "curl -L https://github.com/tektoncd/pipeline/releases/download/v0.11.0-rc2/release.yaml | kubectl apply -f -"
+        run: curl -L https://github.com/tektoncd/pipeline/releases/download/v0.11.0-rc2/release.yaml | ./kubectl apply -f -
 
       - name: create kind secrets
-        run: docker exec -t tekton kubectl create secret generic regcred -n tekton-pipelines --from-file=/root/.docker/config.json
+        run: ./kubectl create secret generic regcred -n tekton-pipelines --from-file=/home/runner/.docker/config.json
  
       - name: create release pipeline
-        run: docker exec -t tekton kubectl apply -f /release.yaml
+        run: ./kubectl apply -f release.yaml
 
       - name: wait for pipelinerun to start
         run: sleep 30
 
       - name: wait for pipelinerun to complete
-        run: docker exec -t tekton kubectl wait pod -n tekton-pipelines --for=condition=completed -l tekton.dev/pipelineRun=tkn-run --timeout="5m"
+        run: ./kubectl wait pod -n tekton-pipelines --for=condition=completed -l tekton.dev/pipelineRun=tkn-run --timeout="5m"
